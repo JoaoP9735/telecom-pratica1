@@ -5,14 +5,28 @@
 #include "config.hpp"
 
 class V21_RX
-{
-public:
-    V21_RX(float omega_mark, float omega_space, std::function<void(const unsigned int *, unsigned int)> get_digital_samples)
-        :omega_mark(omega_mark),omega_space(omega_space),get_digital_samples(get_digital_samples) {};
-    void demodulate(const float *in_analog_samples, unsigned int n);
-private:
-    float omega_mark, omega_space;
-    std::function<void(const unsigned int *, unsigned int)> get_digital_samples;
+ {
+ public:
+     V21_RX(float omega_mark, float omega_space, std::function<void(const unsigned int *, unsigned int)> get_digital_samples)
+         :omega_mark(omega_mark),omega_space(omega_space),get_digital_samples(get_digital_samples) {};
+     void demodulate(const float *in_analog_samples, unsigned int n);
+ private:
+     float omega_mark, omega_space;
+     std::function<void(const unsigned int *, unsigned int)> get_digital_samples;
+ 
+     static constexpr float freq_mark = 1270.0f;
+    static constexpr float freq_space = 1070.0f;
+    static constexpr float fs = 48000.0f;
+
+    // Osciladores
+    float phase_mark = 0.0f;
+    float phase_space = 0.0f;
+
+    // Filtros passa-baixas (soma exponencial)
+    float lp_filter_state = 0.0f;
+
+    // Constantes
+    const float alpha = 0.05f;  // Filtro passa-baixa (ajustável)
 };
 
 class V21_TX
