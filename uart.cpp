@@ -2,98 +2,51 @@
 
 void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
 {
-    int bit_num = 0;
-    FILE *dc = fopen("../dc.raw", "wb");
+    for (unsigned int i = 0; i < n; i++) {
+        this->samples.push_front(buffer[i]);
+        if (this->samples[0] == 0)
+            this->low_bit_counter++;
+        if (this->samples[30] == 0)
+            this->low_bit_counter--; // low bit leaving the window 
 
-    static enum class State {
-        IDLE,
-        SEARCHING,
-        RECEIVING
-    } state = State::IDLE;
-
-    for (int i = 0; i < n; i++)
-    {
-        int mod = i % (SAMPLES_PER_SYMBOL + 1);
-        int sample = buffer[i];
-        ring_buffer[mod] = sample;
-
-        switch (state)
-        {
-        case State::IDLE:
-            if (sample == 0)
-            {
-                state = State::SEARCHING;
-                bit_counter = 0;
-                bit_counter_noisy_tolerance = 0;
-            }
-            break;
-
-        case State::SEARCHING:
-            bit_counter++;
-
-            if (sample == 0)
-            {
-                if (bit_counter >= 30)
-                {
-                    state = State::RECEIVING;
-                    received_byte = 0;
-                    bit_counter_noisy_tolerance = 0;
-
-                    for (int j = (mod - (bit_counter % SAMPLES_PER_SYMBOL)); j != (mod - 1); j = (j + 1) % SAMPLES_PER_SYMBOL)
-                    {
-                        bit_num++;
-                        if (ring_buffer[j] == 1)
-                        {
-                            bit_counter_noisy_tolerance++;
-                        }
-                        else
-                        {
-                            bit_counter_noisy_tolerance = 0;
-                        }
-
-                        if (bit_counter_noisy_tolerance > 10)
-                        {
-                            i = i - (bit_num - bit_counter_noisy_tolerance);
-                            break;
-                        }
-                    }
-
-                    bit_counter_noisy_tolerance = 0;
+        switch (state) {
+            case IDLE:
+                if (low_bit_counter >= 25 && this->samples[93] == 0) {
+                    // This is a start bit!
+                    this->cycles_counter = 15; // after midbit (79 out of 160)
+                    this->byte = 0;
+                    this->bits_read = 0;
+                    this->state = DATA_BIT;
                 }
-            }
-            else
-            {
-                bit_counter_noisy_tolerance++;
 
-                if (bit_counter_noisy_tolerance > 5)
-                {
-                    state = State::IDLE;
-                }
-            }
-            break;
+                break;
 
-        case State::RECEIVING:
-            bit_counter++;
+            case DATA_BIT:
+                if (this->cycles_counter == 159) {
+                    this->byte += this->samples[0] << this->bits_read;
+                    this->bits_read++;
+                    this->cycles_counter = 0;
+                    if (this->bits_read == 8) 
+                        this->state = STOP_BIT;
+                } else
+                    this->cycles_counter++; 
 
-            fwrite(&bit_counter, 1, sizeof(float), dc);
+                break;
 
-            if ((bit_counter % SAMPLES_PER_SYMBOL - (SAMPLES_PER_SYMBOL / 2)) == 0)
-            {
-                received_byte |= (sample << (bit_counter / SAMPLES_PER_SYMBOL - 1));
+            case STOP_BIT:
+                if (this->cycles_counter == 159) {
+                    this->get_byte(this->byte);
+                    this->state = IDLE;
+                } else
+                    this->cycles_counter++;
+                break;
 
-                if (bit_counter >= (9 * SAMPLES_PER_SYMBOL))
-                {
-                    state = State::IDLE;
-                    get_byte(received_byte);
-                }
-            }
-            break;
+            default: break;
         }
+
+        this->samples.pop_back();
     }
-
-    fclose(dc);
 }
-
 
 void UART_TX::put_byte(uint8_t byte)
 {
