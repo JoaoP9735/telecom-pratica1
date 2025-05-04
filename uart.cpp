@@ -2,74 +2,109 @@
 
 void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
 {
-    static enum State { IDLE, START_BIT, WAIT, RECEIVING, STOP_BIT } state = IDLE;
-    static unsigned int sample_count = 0;
-    static unsigned int bit_index = 0;
-    static unsigned int wait_50 = 0;
-    static uint8_t current_byte = 0;
-    static std::deque<unsigned int> history;
+    int bit_num = 0;
+    FILE *dc = fopen("../dc.raw", "wb");
 
-    for (unsigned int i = 0; i < n; ++i) {
-        unsigned int sample = buffer[i];
+    static enum class State {
+        IDLE,
+        SEARCHING,
+        RECEIVING
+    } state = State::IDLE;
 
-        // Armazena histórico das últimas 30 amostras
-        history.push_back(sample);
-        if (history.size() > 30) {
-            history.pop_front();
-        }
+    for (int i = 0; i < n; i++)
+    {
+        int mod = i % (SAMPLES_PER_SYMBOL + 1);
+        int sample = buffer[i];
+        ring_buffer[mod] = sample;
 
-        switch (state) {
-            case IDLE:
-                // Espera pelo início do start bit
-                if (sample == 0 && history.size() == 30) {
-                    int low_count = 0;
-                    for (unsigned int s : history) {
-                        if (s == 0) low_count++;
+        switch (state)
+        {
+        case State::IDLE:
+            if (sample == 0)
+            {
+                state = State::SEARCHING;
+                bit_counter = 0;
+                bit_counter_noisy_tolerance = 0;
+            }
+            break;
+
+        case State::SEARCHING:
+            bit_counter++;
+
+            if (sample == 0)
+            {
+                if (bit_counter >= 30)
+                {
+                    state = State::RECEIVING;
+                    received_byte = 0;
+                    bit_counter_noisy_tolerance = 0;
+
+                    for (int j = (mod - (bit_counter % SAMPLES_PER_SYMBOL)); j != (mod - 1); j = (j + 1) % SAMPLES_PER_SYMBOL)
+                    {
+                        bit_num++;
+                        if (ring_buffer[j] == 1)
+                        {
+                            bit_counter_noisy_tolerance++;
+                        }
+                        else
+                        {
+                            bit_counter_noisy_tolerance = 0;
+                        }
+
+                        if (bit_counter_noisy_tolerance > 10)
+                        {
+                            i = i - (bit_num - bit_counter_noisy_tolerance);
+                            break;
+                        }
                     }
 
-                    if (low_count >= 25 && history.front() == 0) {
-                        // Detecção de start bit válida
-                        sample_count = 0;
-                        bit_index = 0;
-                        current_byte = 0;
-                        wait_50 = 0;
-                        state = WAIT;
-                    }
+                    bit_counter_noisy_tolerance = 0;
                 }
-                break;
+            }
+            else
+            {
+                bit_counter_noisy_tolerance++;
 
-            case WAIT:
-                wait_50++;
-                if(wait_50 == 50){
-                    sample_count = 0;
-                    bit_index = 0;
-                    current_byte = 0;
-                    state = RECEIVING;
+                if (bit_counter_noisy_tolerance > 5)
+                {
+                    state = State::IDLE;
                 }
-            case RECEIVING:
-                sample_count++;
-                if (sample_count == (bit_index + 1) * 160) {
-                    // Amostra no meio do símbolo do bit atual
-                    current_byte |= (sample << bit_index);
-                    bit_index++;
+            }
+            break;
 
-                    if (bit_index == 8) {
-                        state = STOP_BIT;
-                    }
-                }
-                break;
+        case State::RECEIVING:
+            bit_counter++;
 
-            case STOP_BIT:
-                sample_count++;
-                if (sample_count == 9 * 160) {
-                    // Ignora valor do stop bit (assume válido)
-                    get_byte(current_byte);
-                    state = IDLE;
-                    history.clear();
+            fwrite(&bit_counter, 1, sizeof(float), dc);
+
+            if ((bit_counter % SAMPLES_PER_SYMBOL - (SAMPLES_PER_SYMBOL / 2)) == 0)
+            {
+                received_byte |= (sample << (bit_counter / SAMPLES_PER_SYMBOL - 1));
+
+                if (bit_counter >= (9 * SAMPLES_PER_SYMBOL))
+                {
+                    state = State::IDLE;
+                    get_byte(received_byte);
                 }
-                break;
+            }
+            break;
         }
     }
+
+    fclose(dc);
+}
+
+void UART_TX::put_byte(uint8_t byte)
+{
+    samples_mutex.lock();
+    put_bit(0);
+    for (int i = 0; i < 8; i++)
+    {
+        put_bit(byte & 1);
+        byte >>= 1;
+    }
+    put_bit(1);
+    samples_mutex.unlock();
 }
 
 
