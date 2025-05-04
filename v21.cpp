@@ -1,48 +1,41 @@
-#include <math.h>
-#include <numbers>
-#include "v21.hpp"
-
-
 void V21_RX::demodulate(const float *in_analog_samples, unsigned int n)
- {
-     unsigned int digital_samples[n];
+{
+    const unsigned int SAMPLES_PER_SYMBOL = static_cast<unsigned int>(fs / 300.0f);
+    unsigned int num_symbols = n / SAMPLES_PER_SYMBOL;
+    unsigned int digital_samples[num_symbols];
 
-    for (unsigned int i = 0; i < n; ++i) {
-        float sample = in_analog_samples[i];
+    for (unsigned int symbol = 0; symbol < num_symbols; ++symbol) {
+        float accum_mark = 0.0f;
+        float accum_space = 0.0f;
 
-        // Gera senoides locais (coerência)
-        float ref_mark = sin(phase_mark);
-        float ref_space = sin(phase_space);
+        for (unsigned int i = 0; i < SAMPLES_PER_SYMBOL; ++i) {
+            unsigned int index = symbol * SAMPLES_PER_SYMBOL + i;
+            float sample = in_analog_samples[index];
 
-        phase_mark += 2 * std::numbers::pi * freq_mark / fs;
-        phase_space += 2 * std::numbers::pi * freq_space / fs;
+            float ref_mark = sin(phase_mark);
+            float ref_space = sin(phase_space);
 
-        if (phase_mark > 2 * std::numbers::pi) 
-            phase_mark -= 2 * std::numbers::pi;
-        if (phase_space > 2 * std::numbers::pi) 
-            phase_space -= 2 * std::numbers::pi;
+            accum_mark += sample * ref_mark;
+            accum_space += sample * ref_space;
 
-        // Multiplicação coerente
-        float out_mark = sample * ref_mark;
-        float out_space = sample * ref_space;
+            phase_mark += 2 * std::numbers::pi * freq_mark / fs;
+            phase_space += 2 * std::numbers::pi * freq_space / fs;
 
-        // Detecção de energia (energia relativa)
-        float diff = out_mark * out_mark - out_space * out_space;
-
-        // Filtro passa-baixa
-        lp_filter_state = (1 - alpha) * lp_filter_state + alpha * diff;
-
-        // Detecção de ausência de portadora
-        float power = out_mark * out_mark + out_space * out_space;
-        if (power < 1e-4) {
-            digital_samples[i] = 1;  // sem portadoras
-        } else {
-            digital_samples[i] = (lp_filter_state > 0) ? 1 : 0;
+            if (phase_mark >= 2 * std::numbers::pi)
+                phase_mark -= 2 * std::numbers::pi;
+            if (phase_space >= 2 * std::numbers::pi)
+                phase_space -= 2 * std::numbers::pi;
         }
+
+        float energy_mark = accum_mark * accum_mark;
+        float energy_space = accum_space * accum_space;
+
+        digital_samples[symbol] = (energy_mark > energy_space) ? 1 : 0;
     }
 
-    get_digital_samples(digital_samples, n);
- }
+    get_digital_samples(digital_samples, num_symbols);
+}
+
 
 void V21_TX::modulate(const unsigned int *in_digital_samples, float *out_analog_samples, unsigned int n)
 {
