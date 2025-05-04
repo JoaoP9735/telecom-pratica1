@@ -94,19 +94,6 @@ void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
     fclose(dc);
 }
 
-void UART_TX::put_byte(uint8_t byte)
-{
-    samples_mutex.lock();
-    put_bit(0);
-    for (int i = 0; i < 8; i++)
-    {
-        put_bit(byte & 1);
-        byte >>= 1;
-    }
-    put_bit(1);
-    samples_mutex.unlock();
-}
-
 
 void UART_TX::put_byte(uint8_t byte)
 {
