@@ -3,7 +3,7 @@
 
 #include <functional>
 #include "config.hpp"
-
+#include <cmath.h>
 class V21_RX {
 public:
     V21_RX(float omega_mark, float omega_space,
