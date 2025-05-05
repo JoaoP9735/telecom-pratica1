@@ -2,7 +2,7 @@
 
 void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
 {
-    static enum State { IDLE, START_BIT, WAIT, RECEIVING, STOP_BIT } state = IDLE;
+    static enum State { IDLE, WAIT, RECEIVING, STOP_BIT } state = IDLE;
     static unsigned int sample_count = 0;
     static unsigned int bit_index = 0;
     static unsigned int wait_50 = 0;
@@ -21,7 +21,7 @@ void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
         switch (state) {
             case IDLE:
                 // Espera pelo início do start bit
-                if (sample == 0 && history.size() == 30) {
+                if (sample == 0) {
                     int low_count = 0;
                     for (unsigned int s : history) {
                         if (s == 0) low_count++;
