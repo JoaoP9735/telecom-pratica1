@@ -60,9 +60,6 @@ void V21_RX::demodulate(const float *in_analog_samples, unsigned int n)
 
         float raw_decision = vmark_r * vmark_r + vmark_i * vmark_i -
                                 vspace_r * vspace_r - vspace_i * vspace_i; 
-
-        // a[0]*y[n] = b[0]*x[n] + b[1]*x[n-1] + ... + b[M]*x[n-M]
-        //               - a[1]*y[n-1] - ... - a[N]*y[n-N]
         float filtered_decision = 
             this->lp_numerator[0] * raw_decision
             + this->lp_numerator[1] * this->raw_decision_buffer[0]
@@ -119,8 +116,6 @@ void V21_TX::modulate(const unsigned int *in_digital_samples, float *out_analog_
     while (n--) {
         *out_analog_samples++ = sin(phase);
         phase += (*in_digital_samples++ ? omega_mark : omega_space) * SAMPLING_PERIOD;
-
-        // evita que phase cresça indefinidamente, o que causaria perda de precisão
         phase = remainder(phase, 2*M_PI);
     }
 }
