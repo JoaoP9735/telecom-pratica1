@@ -7,7 +7,7 @@ void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
         if (this->history[0] == 0)
             this->low_count++;
         if (this->history[30] == 0)
-            this->low_count--; // low bit leaving the window 
+            this->low_count--;
 
         switch (state) {
             case IDLE:
@@ -37,7 +37,6 @@ void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
             case STOP_BIT:
                 this->sample_count++;
                 if (this->sample_count == 160) {
-                    // Ignora valor do stop bit (assume válido)
                     this->get_byte(this->current_byte);
                     this->state = IDLE;
                 }
